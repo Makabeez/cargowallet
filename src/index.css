@@ -1,0 +1,86 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Canvas */
+  --bg: #f4f6fb;
+  --bg-gradient: linear-gradient(135deg, #eef2fa 0%, #f5f7fc 50%, #edf5f3 100%);
+
+  /* Sidebar */
+  --sidebar-bg: #0b1f3a;
+  --sidebar-border: rgba(255,255,255,0.07);
+  --sidebar-ink: rgba(255,255,255,0.92);
+  --sidebar-muted: rgba(255,255,255,0.45);
+  --sidebar-hover: rgba(255,255,255,0.07);
+  --sidebar-active: rgba(255,255,255,0.12);
+
+  /* Surfaces */
+  --surface: rgba(255,255,255,0.80);
+  --surface-strong: rgba(255,255,255,0.96);
+  --surface-muted: rgba(241,244,250,0.90);
+  --surface-inset: rgba(235,239,247,0.70);
+
+  /* Ink */
+  --ink: #0b1f3a;
+  --ink-2: #1e3a5f;
+  --muted: #64748b;
+  --subtle: #94a3b8;
+
+  /* Borders */
+  --border: rgba(11,31,58,0.08);
+  --border-strong: rgba(11,31,58,0.22);
+  --border-light: rgba(255,255,255,0.72);
+
+  /* Brand */
+  --accent: #0b1f3a;
+  --accent-hover: #1461a8;
+  --accent-blue: #1461a8;
+  --accent-teal: #0d8a7a;
+  --focus: #85b1ed;
+
+  /* Semantic */
+  --success: #059669;
+  --success-bg: rgba(5,150,105,0.08);
+  --danger: #dc2626;
+  --danger-bg: rgba(220,38,38,0.08);
+  --warning: #d97706;
+
+  /* Glass */
+  --glass-card: rgba(255,255,255,0.72);
+  --glass-border: rgba(255,255,255,0.68);
+  --glass-shadow: 0 4px 24px rgba(11,31,58,0.08), 0 1px 0 rgba(255,255,255,0.60) inset;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  font-family: 'DM Sans', sans-serif;
+  min-height: 100dvh;
+  background: var(--bg-gradient);
+  -webkit-font-smoothing: antialiased;
+}
+
+.display {
+  font-family: 'Space Grotesk', sans-serif;
+  letter-spacing: -0.025em;
+}
+
+.mono {
+  font-family: 'JetBrains Mono', Menlo, monospace;
+  font-size: 0.875em;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(11,31,58,0.12); border-radius: 99px; }
+
+/* Print styles for wire document */
+@media print {
+  .no-print { display: none !important; }
+  .print-only { display: block !important; }
+  body { background: white !important; }
+}
