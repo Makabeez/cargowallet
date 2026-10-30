@@ -1,220 +1,219 @@
-# CargoWallet — Air Freight Instant Payments
+<div align="center">
 
-> Instant USDC settlement for air freight forwarders. No 30-day invoice cycles.
+<img src="docs/banner.svg" alt="CargoWallet — USDC escrow for air freight on Arc mainnet" width="100%"/>
 
-Built on [Arc](https://arc.io) — Circle's blockchain where USDC is the native gas token.
+### Air freight paid on delivery, in seconds. Not on a 30-day invoice cycle.
 
----
+[![Live App](https://img.shields.io/badge/Live_App-aircargowallet.netlify.app-2DD4BF?style=for-the-badge&logo=netlify&logoColor=white)](https://aircargowallet.netlify.app)
+[![Contract](https://img.shields.io/badge/Contract-Arc_Mainnet-1E40AF?style=for-the-badge&logo=ethereum&logoColor=white)](https://explorer.arc.io/address/0xb56Aea1AB82aA8f675Eb2FA59D418734046cD92F)
+[![Demo Video](https://img.shields.io/badge/Demo-YouTube-FF0000?style=for-the-badge&logo=youtube&logoColor=white)](https://youtu.be/2kuF6uMZmrI)
+[![Built with Arc Studio](https://img.shields.io/badge/Built_with-Arc_Studio-0B2340?style=for-the-badge)](https://studio.arc.io/app/1c925a33-8236-43f6-9886-d5bf8c83d152)
+[![License: MIT](https://img.shields.io/badge/License-MIT-64748B?style=for-the-badge)](LICENSE)
 
-## What It Does
+![Solidity](https://img.shields.io/badge/Solidity-0.8.28-363636?logo=solidity&logoColor=white)
+![Foundry](https://img.shields.io/badge/Foundry-62%2F62_tests-F97316)
+![Slither](https://img.shields.io/badge/Slither-reviewed-6E56CF)
+![OpenZeppelin](https://img.shields.io/badge/OpenZeppelin-5.1-4E5EE4?logo=openzeppelin&logoColor=white)
+![USDC](https://img.shields.io/badge/USDC-6_decimals-2775CA)
+![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)
+![Vite](https://img.shields.io/badge/Vite-6-646CFF?logo=vite&logoColor=white)
+![wagmi](https://img.shields.io/badge/wagmi%20%2B%20viem-v2-1C1C1C)
 
-Traditional air cargo billing runs on 30-day credit cycles. A forwarder ships cargo, the carrier invoices, the forwarder pays 30 days later — capital is tied up, relationships are strained, and reconciliation is manual.
+</div>
 
-CargoWallet replaces that with onchain USDC escrow:
-
-1. **Forwarder creates a shipment** — references an Air Waybill (AWB) number, names a carrier and ground handler, sets a BPS split (e.g. 70/30), an amount, and a deadline.
-2. **Forwarder funds the escrow** — approves and transfers USDC into the contract. Funds are locked.
-3. **On delivery, forwarder confirms** — the contract releases the split: carrier and handler can each claim their USDC instantly.
-4. **If not delivered by deadline** — forwarder reclaims the full amount.
-
-Settlement is sub-second on Arc. No bank wire. No correspondent fees. No 30 days.
-
----
-
-## Contract: AirCargoEscrow
-
-**Network:** Arc Mainnet (chain ID 5042)  
-**USDC:** `0x3600000000000000000000000000000000000000` — 6 ERC-20 decimals  
-**Contract:** [`0xb56aea1ab82aa8f675eb2fa59d418734046cd92f`](https://explorer.arc.io/address/0xb56aea1ab82aa8f675eb2fa59d418734046cd92f)  
-**Deploy tx:** [`0x9a57fc6f5701...`](https://explorer.arc.io/tx/0x9a57fc6f570174e26565f589aef64e74d4e2c71352a84d096947560094505165)  
-**Owner:** `0x72454f65aAe03333E309084D5f211AC059212187`  
-**Explorer:** https://explorer.arc.io
-
-### State Machine
-
-```
-Created → Funded → Released  (confirmDelivery)
-                → Refunded   (refund, after deadline)
-         → Cancelled         (cancel, before funding)
-```
-
-### Key Functions
-
-| Function | Who | Description |
-|---|---|---|
-| `createShipment(awbRef, carrier, handler, carrierBps, handlerBps, amount, deadline)` | Forwarder | Creates escrow. `awbRef` = `keccak256(awbNumber)` — no plaintext onchain. |
-| `fund(shipmentId)` | Forwarder | Pulls USDC from forwarder (ERC-20 approve first). |
-| `confirmDelivery(shipmentId)` | Forwarder | Marks delivered, credits carrier/handler claimable balances. |
-| `refund(shipmentId)` | Forwarder | Returns USDC after deadline if still Funded. |
-| `cancel(shipmentId)` | Forwarder | Cancels before funding. |
-| `claim()` | Carrier or Handler | Pulls their credited USDC balance. |
-| `setMaxAmount(newMax)` | Owner only | Cap per shipment (default 10 USDC for launch). |
-| `setPaused(bool)` | Owner only | Emergency pause — blocks only `createShipment` and `fund`. Recovery functions are always live. |
-
-### Trust Model
-
-**The forwarder controls every lifecycle step for their own shipments.**
-Only the address that called `createShipment` can call `fund`, `confirmDelivery`, `refund`, and `cancel` on that shipment. No other party — not the owner, not the carrier, not the handler — can advance or unwind a shipment.
-
-**Confirmation is forwarder-only, not oracle-driven.**
-There is no third-party oracle or multi-sig. The forwarder decides when delivery is complete and calls `confirmDelivery` themselves. This is a deliberate design choice for the Swiss freight forwarding market, where the forwarder is the accountable party.
-
-**The owner's powers are strictly limited to two things:**
-1. `setMaxAmount` — adjust the per-shipment USDC cap (default: 10 USDC at launch).
-2. `setPaused(true)` — emergency pause that blocks new `createShipment` and `fund` calls only.
-
-**The owner has zero access to user funds.** There is no withdrawal function, no sweep, no rescue, and no way for the owner to touch USDC that has been escrowed. This is enforced in the bytecode, not just a policy.
-
-**Funds are always recoverable by users regardless of pause state.**
-`confirmDelivery`, `refund`, `cancel`, and `claim` have no pause guard. Even if the owner pauses the contract, every party can still settle, refund, or cancel their own positions.
-
-**Ownership transfer is two-step** (`Ownable2Step`). A `transferOwnership` call only sets a pending owner — the new owner must explicitly call `acceptOwnership`. This prevents accidental permanent lockout from a mistyped address.
-
-### Security Properties
-
-- **Pull payments** — `confirmDelivery` credits claimable balances instead of pushing USDC (avoids blocklist-bricking). Carrier/handler pull via `claim()`.
-- **ReentrancyGuard** on all fund-moving functions.
-- **Checks-Effects-Interactions** — status updated before any external call.
-- **No admin access to user funds** — owner can only set the cap and pause intake; cannot withdraw escrow.
-- **No upgradeability** — immutable bytecode.
-- **Pause scope** — only `createShipment` and `fund` are blocked when paused; recovery functions are always live.
-- **USDC decimals: 6** (ERC-20 interface throughout, never the 18-decimal native gas view).
-- **BPS overflow safe** — carrier/handler bps sum cast to `uint256` before comparison, so `BpsNotFull` is always the revert reason for invalid splits.
-- **Deadline enforced at funding time** — `fund()` reverts `DeadlineInPast` if the shipment deadline has already passed.
-
-### Review Results
-
-- Balanced security review: **0 critical, 0 high findings** (after fixes applied)
-- Slither: 1 false positive (`arbitrary-send-erc20`, mitigated by `msg.sender` guard), 2 low timestamp findings (acceptable on Arc), 1 informational naming style
-- Unit tests: **62/62 passing** — happy path, all revert paths, fuzz split arithmetic, reentrancy attempt, Ownable2Step two-step transfer, deadline guard at fund time, bps uint256 overflow
-
-> Arc Studio runs a best-effort internal review. This is NOT a substitute for a paid third-party audit before handling large real-money volumes.
+> **Live on Arc mainnet with real USDC.** Shipment #3 escrowed **1 USDC** for AWB `176-12345675`, then paid **0.70 USDC** to the carrier and **0.30 USDC** to the ground handler. The contract ended back at **0**. Every step is public on [explorer.arc.io](https://explorer.arc.io/address/0xb56Aea1AB82aA8f675Eb2FA59D418734046cD92F). Contract, tests, deployment and app were all built in [Arc Studio](https://studio.arc.io/app/1c925a33-8236-43f6-9886-d5bf8c83d152).
 
 ---
 
-## App
+## Why
 
-### Pages
+Air cargo is settled on credit. A forwarder ships today, the carrier invoices, and payment lands roughly 30 days later through billing cycles and bank wires. Capital sits idle, reconciliation is manual, and the smallest parties carry the cost.
 
-| Tab | What It Does |
+CargoWallet moves the settlement leg onchain. The forwarder locks USDC per Air Waybill when the cargo is booked. When the cargo is delivered, the carrier and the ground handler are paid **in seconds** at the split agreed upfront. If it is not delivered by the deadline, the forwarder gets the money back. No correspondent bank, no 30 days.
+
+## Mainnet proof
+
+| | |
 |---|---|
-| **Dashboard** | Live USDC balance, quick-send, recent payment history |
-| **Escrow** | Create shipment, fund, confirm delivery, refund, view all shipments |
-| **Payments** | Direct USDC payments (legacy simple transfer flow) |
-| **Profile** | Forwarder company identity (appears on wire documents) |
+| **Network** | Arc Mainnet (chain ID `5042`) |
+| **Contract** | [`0xb56Aea1AB82aA8f675Eb2FA59D418734046cD92F`](https://explorer.arc.io/address/0xb56Aea1AB82aA8f675Eb2FA59D418734046cD92F) |
+| **Deploy tx** | [`0x9a57fc6f…94505165`](https://explorer.arc.io/tx/0x9a57fc6f570174e26565f589aef64e74d4e2c71352a84d096947560094505165) |
+| **Example tx: `fund()`, 1 USDC into escrow** | [`0x15dbb1fe…75afbf1f`](https://explorer.arc.io/tx/0x15dbb1feee30a26363ef7e9451becda55d30d2bad69b476fe04c740975afbf1f) |
+| **Settlement** | 1 USDC in → 0.70 carrier + 0.30 handler claimed → contract balance 0 |
+| **Owner** | `0x72454f65aAe03333E309084D5f211AC059212187` (hardware wallet; cap + pause only) |
+| **USDC** | `0x3600000000000000000000000000000000000000` (6 decimals) |
 
-### Wire Document
+## Demo
 
-Every confirmed payment generates a printable wire document containing:
-- Amount, AWB reference, invoice number, carrier/handler names
-- Payer and payee wallet addresses
-- Blockchain proof: transaction hash, network, settlement time
+<div align="center">
+<img src="docs/demo.gif" alt="Create, fund, confirm delivery and claim on Arc mainnet" width="860"/>
 
-Print or save as PDF from the app.
+Full walkthrough (Arc Studio build + mainnet transactions): **[youtu.be/2kuF6uMZmrI](https://youtu.be/2kuF6uMZmrI)**
+</div>
 
----
+## How it works
 
-## Development
+<img src="docs/flow.svg" alt="Escrow lifecycle" width="100%"/>
 
-### Prerequisites
-
-- [Bun](https://bun.sh) (package manager)
-- [Foundry](https://book.getfoundry.sh) (`forge`, `cast`, `anvil`)
-- A Circle developer account ([console.circle.com](https://console.circle.com))
-
-### Run Locally
-
-```bash
-git clone https://github.com/Makabeez/cargowallet.git
-cd cargowallet
-bun install
-bun run dev
-```
-
-### Run Tests
-
-```bash
-forge test
-```
-
-### Build
-
-```bash
-bun run build
-```
-
----
-
-## Deployment
-
-### Arc Mainnet Prerequisites
-
-1. Complete Circle mainnet account signup at [console.circle.com](https://console.circle.com)
-2. Create a **Standard Developer API Key** (mainnet) in Circle Console
-3. Paste into `.env` as `CIRCLE_API_KEY`
-4. Register an entity secret (one-time, account-wide) — Arc Studio walks you through this
-5. Fund the deployer wallet with USDC (~1 USDC for gas)
-
-### Deploy Command (run via Arc Studio)
-
-```bash
-bun run compass:deploy AirCargoEscrow \
-  '["0x3600000000000000000000000000000000000000","0x72454f65aAe03333E309084D5f211AC059212187"]' \
-  --mode live \
-  --signer private-key \
-  --blockchain ARC-MAINNET \
-  --compass-chain Arc \
-  --rpc https://rpc.mainnet.arc.io
-```
-
-Set `DEPLOYER_PRIVATE_KEY` in `.env` before running. Remove it immediately after.  
-The first constructor arg is the Arc mainnet USDC address; the second is the owner address.
-
-### Post-Deploy Checklist (1–2 USDC end-to-end test)
-
-- [ ] `createShipment` — AWB `176-12345675`, carrier `Swiss WorldCargo`, 70/30 split, 1 USDC, 24h deadline
-- [ ] Approve USDC on the contract (`usdc.approve(contractAddress, 1_000_000)`)
-- [ ] `fund(shipmentId)` — verify status = Funded on explorer
-- [ ] `confirmDelivery(shipmentId)` — verify status = Released, check `claimable[carrier]` = 700_000, `claimable[handler]` = 300_000
-- [ ] Carrier calls `claim()` — verify 700_000 USDC received
-- [ ] Handler calls `claim()` — verify 300_000 USDC received
-- [ ] Check all tx hashes on https://explorer.arc.io
-
----
+1. **Create.** The forwarder calls `createShipment` with the AWB reference (stored as `keccak256(awbNumber)`, never as plaintext), the carrier and handler addresses, the split in basis points, the amount and a deadline.
+2. **Fund.** The forwarder approves USDC and calls `fund`. The USDC is locked in the contract.
+3. **Delivered.** The forwarder calls `confirmDelivery`. The contract credits each party's claimable balance at the agreed split.
+4. **Paid.** Carrier and handler each call `claim` and receive their USDC immediately.
+5. **Not delivered?** After the deadline the forwarder calls `refund` and gets the full amount back. A shipment can also be cancelled before it is funded.
 
 ## Architecture
 
 ```
-Arc Mainnet
-  └── AirCargoEscrow.sol
-        ├── USDC (0x3600...0000, 6 decimals)
-        ├── Ownable2Step (admin: cap + pause only; two-step transfer)
-        └── ReentrancyGuard
-
-Frontend (React + Vite + wagmi v2 + ConnectKit)
-  ├── Arc Mainnet chain config
-  ├── EscrowPanel — create / fund / confirm / refund / claim
-  ├── ShipmentList — status, split, deadline, explorer links
-  └── WireDocument — printable settlement proof
+                         Arc Mainnet (chain 5042)
+ ┌───────────────────────────────────────────────────────────────────┐
+ │                                                                   │
+ │   Forwarder ──createShipment / fund──▶  AirCargoEscrow.sol         │
+ │      ▲                                  ├─ Shipment state machine │
+ │      │ refund (after deadline)          │  Created → Funded →     │
+ │      └──────────────────────────────────┤  Released | Refunded |  │
+ │                                         │  Cancelled              │
+ │                                         ├─ claimable[address]     │
+ │   Carrier  ◀──────── claim() ───────────┤  (pull payments)        │
+ │   Handler  ◀──────── claim() ───────────┤                         │
+ │                                         ├─ ReentrancyGuard        │
+ │                                         ├─ Ownable2Step           │
+ │                                         │  (cap + pause only)     │
+ │                                         └─ SafeERC20 ─▶ USDC      │
+ │                                             0x3600…0000 (6 dec)   │
+ └───────────────────────────────────────────────────────────────────┘
+                                   ▲
+                                   │ wagmi / viem (wallet provider first,
+                                   │ public RPC fallback)
+ ┌─────────────────────────────────┴─────────────────────────────────┐
+ │  React app (Vite, Netlify): aircargowallet.netlify.app            │
+ │  ├─ EscrowPanel: create → approve → fund (receipt-gated steps)    │
+ │  ├─ Shipment list: status, split, deadline, explorer links        │
+ │  ├─ Claims: carrier / handler pull their balance                  │
+ │  └─ WireDocument: printable settlement proof per payment          │
+ └───────────────────────────────────────────────────────────────────┘
 ```
 
----
+## Tech stack
 
-## Built With Arc Studio
+| Layer | Tools |
+|---|---|
+| Contract | Solidity 0.8.28 · OpenZeppelin 5.1 (`SafeERC20`, `ReentrancyGuard`, `Ownable2Step`) |
+| Testing and analysis | Foundry (62 unit tests incl. fuzz + reentrancy) · Slither · mainnet-fork rehearsal on real Arc USDC |
+| Chain | Arc Mainnet, USDC as the settlement asset and gas token |
+| Frontend | React 18 · Vite 6 · TypeScript · Tailwind · wagmi v2 + viem · ConnectKit |
+| Hosting | Netlify |
+| Build | Arc Studio (contract, review, tests, deploy, app) |
 
-This project was built end-to-end inside [Arc Studio](https://studio.arc.io) by Circle:
+## Smart contract
 
-- **Contract** — written, reviewed (balanced security review), and fixed by Arc Studio's contract pipeline
-- **Tests** — 62 Foundry unit tests written and run by Arc Studio's contract tester
-- **Static analysis** — Slither run inside the Arc Studio sandbox
-- **Deployment** — Compass engine (CREATE2, deterministic address, fork rehearsal) via Arc Studio
-- **Frontend** — React/Vite/wagmi app built and wired to the deployed contract by Arc Studio
-- **UI design** — Arc Light design system with Space Grotesk / DM Sans typography
+`contracts/AirCargoEscrow.sol`
 
-Arc Studio turns a product idea into a deployed onchain app in a single conversation.
+| Function | Caller | What it does |
+|---|---|---|
+| `createShipment(awbRef, carrier, handler, carrierBps, handlerBps, amount, deadline)` | Forwarder | Opens an escrow in `Created` state |
+| `fund(shipmentId)` | Forwarder | Pulls USDC into the contract (`Funded`) |
+| `confirmDelivery(shipmentId)` | Forwarder | Credits carrier and handler (`Released`) |
+| `claim()` | Carrier / Handler | Withdraws the caller's credited USDC |
+| `refund(shipmentId)` | Forwarder | Returns the full amount after the deadline (`Refunded`) |
+| `cancel(shipmentId)` | Forwarder | Cancels before funding (`Cancelled`) |
+| `setMaxAmount(newMax)` | Owner | Per-shipment cap (10 USDC at launch) |
+| `setPaused(bool)` | Owner | Pauses **new** `createShipment` / `fund` only |
 
----
+Delivery credits balances instead of pushing transfers, so a blocklisted or broken recipient can never freeze the other party's payout:
+
+```solidity
+function confirmDelivery(uint256 shipmentId) external nonReentrant {
+    Shipment storage shipment = shipments[shipmentId];
+    if (shipment.status != Status.Funded) revert WrongStatus();
+    if (msg.sender != shipment.forwarder) revert NotForwarder();
+
+    shipment.status = Status.Released;
+
+    uint256 carrierAmt = (shipment.amount * shipment.carrierBps) / 10_000;
+    uint256 handlerAmt = shipment.amount - carrierAmt;
+
+    claimable[shipment.carrier] += carrierAmt;
+    claimable[shipment.handler] += handlerAmt;
+
+    emit Released(shipmentId, carrierAmt, handlerAmt);
+}
+
+function claim() external nonReentrant {
+    uint256 amount = claimable[msg.sender];
+    if (amount == 0) revert NothingToClaim();
+    claimable[msg.sender] = 0;
+    usdc.safeTransfer(msg.sender, amount);
+    emit Claimed(msg.sender, amount);
+}
+```
+
+### Trust model
+
+- **Forwarder-controlled lifecycle.** Only the shipment's forwarder can fund, confirm, refund or cancel it. Delivery confirmation is forwarder-only by design (no oracle yet; see Roadmap).
+- **The owner cannot touch funds.** There is no withdraw, sweep or rescue function. Owner powers are limited to the per-shipment cap and pausing new escrows.
+- **Users can always exit.** `confirmDelivery`, `claim`, `refund` and `cancel` work even while paused.
+- **Safe ownership transfer.** `Ownable2Step` means the new owner must accept, so a mistyped address cannot lock the contract.
+- **Immutable.** No proxy, no upgrade path.
+
+### Security and testing
+
+- Arc Studio security review: **0 critical / 0 high** after fixes. The review caught that pushing USDC to two recipients in one call could brick a shipment if either address was blocklisted. Fixed with pull payments.
+- **62/62 Foundry tests**: happy path, every revert path, fuzzed split arithmetic, reentrancy attempt, pause scope, two-step ownership, deadline at funding time, basis-point overflow.
+- **Slither**: one false positive (`arbitrary-send-erc20`, guarded by `msg.sender == forwarder`), two low timestamp notes (acceptable on Arc), one naming note.
+- **Mainnet-fork rehearsal** of create → fund → confirm → claim → refund against the real Arc USDC before going live.
+
+> Reviewed by Arc Studio's automated pipeline, not by an external auditor. Amounts are capped at 10 USDC per shipment until an external audit is done.
+
+## Local development
+
+Prerequisites: [Bun](https://bun.sh) and [Foundry](https://book.getfoundry.sh).
+
+```bash
+git clone https://github.com/Makabeez/cargowallet.git
+cd cargowallet
+bun install          # app deps + @openzeppelin/contracts (remapped from node_modules)
+forge test           # 62 contract tests (lib/forge-std is vendored)
+bun run dev          # app at http://localhost:5173, connects to Arc mainnet
+```
+
+Other scripts: `bun run build` (production build), `bun run typecheck`, `bun run lint`, `bun run check` (lint + typecheck).
+
+## Deployment
+
+The contract was deployed from Arc Studio to Arc mainnet with constructor args `(USDC, owner)`:
+
+```text
+usdc  = 0x3600000000000000000000000000000000000000
+owner = 0x72454f65aAe03333E309084D5f211AC059212187
+```
+
+Arc Studio first ran a fork verification (`--mode verify`) against real Arc USDC, then deployed live with a throwaway deployer key holding about 1 USDC for gas. That key has no privileges after deployment: the owner is a hardware wallet. The deploy scripts are in `scripts/` (`compass-deploy.ts`, `self-deploy.ts`), and deploy metadata is in `contracts/contract-metadata/AirCargoEscrow.json`. `compass-deploy.ts` depends on Circle's Compass packages, which are only available inside the Arc Studio sandbox, so it is excluded from the local typecheck.
+
+The app is a static Vite build hosted on Netlify. The contract address is a committed constant in `src/lib/chain.ts`, and the ABI is generated from the compiler artifact (`src/lib/escrowAbi.ts`).
+
+## Roadmap
+
+- **CHF settlement** for Swiss forwarders, a one-line config switch once a CHF stablecoin is live on Arc
+- **Invoicing integrations**: create escrows from existing air cargo billing and booking systems
+- **Delivery attestation** by the handler or an oracle, instead of forwarder-only confirmation
+- **Higher caps** after an external audit
+
+## Built with Arc Studio
+
+The project ([Arc Studio project](https://studio.arc.io/app/1c925a33-8236-43f6-9886-d5bf8c83d152)) was built in a single Arc Studio workspace:
+
+- **Contract**: written, security-reviewed and fixed by Studio's contract pipeline
+- **Tests**: 62 Foundry unit tests plus a mainnet-fork integration run
+- **Static analysis**: Slither in the Studio sandbox
+- **Deployment**: fork verification, then a live deploy to Arc mainnet
+- **App**: React/Vite/wagmi frontend wired to the deployed contract, debugged live (event decoding from the compiler ABI, tested against real mainnet logs)
+
+Submitted to **Arc Microgrants: Built with Arc Studio**.
+
+## Attribution
+
+Built by **[Makabeez](https://github.com/Makabeez)** ([@GeiserJoe2](https://x.com/GeiserJoe2)) with [Arc Studio](https://studio.arc.io) by Circle. Uses [OpenZeppelin Contracts](https://github.com/OpenZeppelin/openzeppelin-contracts) and [forge-std](https://github.com/foundry-rs/forge-std).
 
 ## License
 
-MIT
+[MIT](LICENSE)
