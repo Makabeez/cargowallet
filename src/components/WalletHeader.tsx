@@ -6,8 +6,8 @@ import {
   Plane, LayoutDashboard, History, Settings, Package,
   ChevronRight, Wifi
 } from 'lucide-react'
-import { getUsdc } from '@/onchain-facts'
-import { Amount, usdcDecimalsFor } from '@/onchain-money'
+import { getUsdc } from '@/lib/chain'
+import { Amount, usdcDecimalsFor } from '@/lib/money'
 
 const TARGET_CHAIN_ID = 5042 // Arc Mainnet
 

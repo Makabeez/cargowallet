@@ -3,7 +3,7 @@
  * All amounts are represented at 6 ERC-20 decimals (the Arc / Circle USDC standard).
  */
 
-import { getUsdc } from './onchain-facts'
+import { getUsdc } from './chain'
 
 export function usdcDecimalsFor(chainId: number): number {
   return getUsdc(chainId)?.decimals ?? 6
@@ -41,7 +41,8 @@ export class Amount {
 
 /**
  * Parse a human-readable USDC string (e.g. "1.50") into an Amount.
- * Throws if the string is not a valid non-negative decimal.
+ * Throws if the string is not a valid non-negative decimal, or if the
+ * fractional part has more than `decimals` (6) digits — never truncates silently.
  */
 export function parseAmount(chainId: number, value: string): Amount {
   const decimals = usdcDecimalsFor(chainId)
@@ -49,8 +50,14 @@ export function parseAmount(chainId: number, value: string): Amount {
   if (!/^\d+(\.\d+)?$/.test(trimmed)) throw new Error(`Invalid amount: "${value}"`)
 
   const [wholePart, fracPart = ''] = trimmed.split('.')
-  const fracPadded = fracPart.padEnd(decimals, '0').slice(0, decimals)
+  if (fracPart.length > decimals) {
+    throw new Error(
+      `Amount "${value}" has ${fracPart.length} fractional digits — ` +
+        `maximum is ${decimals} for USDC.`,
+    )
+  }
 
+  const fracPadded = fracPart.padEnd(decimals, '0')
   const raw = BigInt(wholePart) * 10n ** BigInt(decimals) + BigInt(fracPadded)
   return Amount.fromRaw(raw, decimals)
 }

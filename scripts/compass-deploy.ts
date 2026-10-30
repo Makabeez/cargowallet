@@ -30,7 +30,6 @@ import {
   deriveSalt,
   getForkRpcUrl,
   isRecord,
-  isTransientRpcError,
   parseConstructorArgs,
   parseGasToken,
   parseMode,
@@ -979,61 +978,6 @@ async function verifyOnFork(options: CliOptions, targetArtifact: CompiledArtifac
   await shutdownFork();
 }
 
-function liveDeployError(result: unknown, contractName: string): string | undefined {
-  const contracts = isRecord(result) && Array.isArray(result.contracts) ? result.contracts : [];
-  const match =
-    contracts.find((c): c is Record<string, unknown> => isRecord(c) && c.name === contractName) ??
-    (isRecord(contracts[0]) ? contracts[0] : undefined);
-
-  return match && typeof match.error === 'string' && match.error.length > 0 ? match.error : undefined;
-}
-
-const LIVE_DEPLOY_MAX_ATTEMPTS = 5;
-
-async function runLiveDeploy(
-  config: unknown,
-  signer: DeploySigner,
-  options: CliOptions,
-): Promise<{ address: string; txHash?: string }> {
-  const mod = await loadModule('@circlefin/compass-deploy');
-  const deploy = mod.deploy as (input: unknown) => Promise<unknown>;
-  let lastError = '';
-
-  for (let attempt = 1; attempt <= LIVE_DEPLOY_MAX_ATTEMPTS; attempt++) {
-    console.log(
-      attempt === 1
-        ? `Live deploy (path B, viem): broadcasting ${options.name} to ${ACTIVE_CHAIN.chainLabel} via ${redactRpcUrl(options.rpcUrl)}...`
-        : `Live deploy retry ${attempt}/${LIVE_DEPLOY_MAX_ATTEMPTS} (transient RPC error)...`,
-    );
-
-    const result = await deploy({
-      deployment: config,
-      target: 'testnet',
-      signer,
-      rpcOverrides: { [ACTIVE_CHAIN.compassChain]: options.rpcUrl },
-      lockDir: CONTRACTS_ROOT_DIR,
-      writeLockFile: true,
-    });
-
-    const errorMessage = liveDeployError(result, options.name);
-    if (!errorMessage) {
-      return readDeployedContract(result, options.name);
-    }
-
-    lastError = errorMessage;
-    if (attempt < LIVE_DEPLOY_MAX_ATTEMPTS && isTransientRpcError(errorMessage)) {
-      await sleep(attempt * 5_000);
-      continue;
-    }
-
-    throw new Error(`Compass live deploy failed for ${options.name}: ${sanitizeForLog(errorMessage)}`);
-  }
-
-  throw new Error(
-    `Compass live deploy failed for ${options.name} after ${LIVE_DEPLOY_MAX_ATTEMPTS} attempts: ${sanitizeForLog(lastError)}`,
-  );
-}
-
 async function ensureCreate2Factory(input: {
   scpClient: CircleSmartContractPlatformClient;
   walletId: string;
@@ -1165,7 +1109,7 @@ async function pollTransaction(
   throw new Error(`Create2Factory.deploy transaction timed out after ${(MAX_POLL_ATTEMPTS * POLL_INTERVAL_MS) / 1000}s.`);
 }
 
-async function runPrivateKeyDeploy(options: CliOptions, forkPredicted?: string): Promise<void> {
+async function runPrivateKeyDeploy(options: CliOptions): Promise<void> {
   const deployerKey = coerceString(process.env.DEPLOYER_PRIVATE_KEY);
   if (!deployerKey) {
     throw new Error(
@@ -1173,26 +1117,49 @@ async function runPrivateKeyDeploy(options: CliOptions, forkPredicted?: string):
     );
   }
 
-  const mod = await loadModule('@circlefin/compass-deploy/evm-signing');
-  const PrivateKeySigner = mod.PrivateKeySigner as new (key: Hex) => DeploySigner;
-  const config = await buildDeploymentConfig(options);
-  const signer = new PrivateKeySigner(deployerKey as Hex);
-  const deployment = await runLiveDeploy(config, signer, options);
+  // Use viem directly — Compass's deploy() has an upstream bug with constructor
+  // args (x.replace crash on ABI-encoded bytecode). viem deployContract handles
+  // ABI encoding correctly and is what the verify fork path already uses.
+  const targetArtifact = readCompiledArtifact(options.artifactPath);
+  const account = privateKeyToAccount(deployerKey as Hex);
+  const walletClient = createWalletClient({ account, transport: http(options.rpcUrl) });
+  const publicClient = createPublicClient({ transport: http(options.rpcUrl) });
 
-  if (forkPredicted && forkPredicted.toLowerCase() !== deployment.address.toLowerCase()) {
-    throw new Error(
-      `Live address ${deployment.address} does not match fork-rehearsed CREATE2 address ${forkPredicted}.`,
-    );
+  console.log(`Live deploy (viem, private-key): broadcasting ${options.name} to ${ACTIVE_CHAIN.chainLabel} via ${redactRpcUrl(options.rpcUrl)}...`);
+  console.log(`Deployer: ${account.address}`);
+
+  const txHash = await walletClient.deployContract({
+    abi: targetArtifact.abi as Abi,
+    bytecode: targetArtifact.bytecode,
+    args: options.constructorArgs,
+    account,
+    chain: null,
+  });
+
+  console.log(`Deploy tx broadcast: ${txHash}`);
+  console.log('Waiting for receipt...');
+
+  const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
+
+  if (receipt.status !== 'success') {
+    throw new Error(`Deploy transaction ${txHash} reverted. Check ${ACTIVE_CHAIN.explorer}/tx/${txHash}`);
   }
 
-  const explorerUrl = explorerUrlFor(deployment.address);
+  const contractAddress = receipt.contractAddress;
+  if (!contractAddress) {
+    throw new Error(`Deploy transaction ${txHash} succeeded but returned no contract address.`);
+  }
+
+  console.log(`Contract deployed at ${contractAddress}`);
+
+  const explorerUrl = explorerUrlFor(contractAddress);
   const { metadataPath, metadata } = upsertContractMetadata({
     name: options.name,
     artifactPath: options.artifactPath,
-    contractAddress: deployment.address,
+    contractAddress,
     explorerUrl,
-    ...(deployment.txHash ? { txHash: deployment.txHash } : {}),
-    deployerAddress: signer.address,
+    txHash,
+    deployerAddress: account.address,
   });
 
   console.log(
@@ -1201,14 +1168,12 @@ async function runPrivateKeyDeploy(options: CliOptions, forkPredicted?: string):
         status: 'success',
         mode: options.mode,
         chain: ACTIVE_CHAIN.chainLabel,
-        engine: 'compass',
+        engine: 'viem-direct',
         signer: 'private-key',
-        predictedAddress: forkPredicted,
-        contractAddress: deployment.address,
-        txHash: deployment.txHash,
-        deployerAddress: signer.address,
+        contractAddress,
+        txHash,
+        deployerAddress: account.address,
         explorerUrl,
-        deployLockPath: `${CONTRACTS_ROOT_DIR}/deploy.lock.json`,
         contractMetadataPath: metadataPath,
         contractMetadata: metadata,
       },
@@ -1361,7 +1326,7 @@ async function main(): Promise<void> {
   }
 
   if (options.signerKind === 'private-key') {
-    await runPrivateKeyDeploy(options, forkPredicted);
+    await runPrivateKeyDeploy(options);
     return;
   }
 

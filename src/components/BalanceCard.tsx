@@ -1,8 +1,8 @@
 import { useAccount, useReadContract } from 'wagmi'
 import { erc20Abi } from 'viem'
 import { ArrowUpRight, RefreshCw, TrendingUp, Package } from 'lucide-react'
-import { getUsdc } from '@/onchain-facts'
-import { Amount, usdcDecimalsFor } from '@/onchain-money'
+import { getUsdc } from '@/lib/chain'
+import { Amount, usdcDecimalsFor } from '@/lib/money'
 import { TokenUSDC } from '@web3icons/react'
 import type { ForwarderProfile } from './types'
 

@@ -6,8 +6,8 @@ import {
   X, Loader2, ExternalLink, CheckCircle2, AlertCircle,
   ArrowUpRight, FileText, DollarSign, Hash, Truck
 } from 'lucide-react'
-import { getUsdc, buildTxExplorerUrl } from '@/onchain-facts'
-import { parseAmount, Amount, usdcDecimalsFor } from '@/onchain-money'
+import { getUsdc, buildTxExplorerUrl } from '@/lib/chain'
+import { parseAmount, Amount, usdcDecimalsFor } from '@/lib/money'
 import type { ForwarderProfile, PaymentRecord } from './types'
 
 const TARGET_CHAIN_ID = 5042 // Arc Mainnet

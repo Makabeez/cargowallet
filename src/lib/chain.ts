@@ -3,6 +3,10 @@
  * Arc Mainnet (5042) and Arc Testnet (5042002) share the same USDC address.
  */
 
+// ── Deployed contract addresses (committed, not env-dependent) ────────────────
+export const ESCROW_ADDRESS =
+  '0xb56aea1ab82aa8f675eb2fa59d418734046cd92f' as const satisfies `0x${string}`
+
 interface UsdcFact {
   address: `0x${string}`
   decimals: number

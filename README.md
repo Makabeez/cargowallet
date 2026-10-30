@@ -25,9 +25,10 @@ Settlement is sub-second on Arc. No bank wire. No correspondent fees. No 30 days
 
 **Network:** Arc Mainnet (chain ID 5042)  
 **USDC:** `0x3600000000000000000000000000000000000000` — 6 ERC-20 decimals  
+**Contract:** [`0xb56aea1ab82aa8f675eb2fa59d418734046cd92f`](https://explorer.arc.io/address/0xb56aea1ab82aa8f675eb2fa59d418734046cd92f)  
+**Deploy tx:** [`0x9a57fc6f5701...`](https://explorer.arc.io/tx/0x9a57fc6f570174e26565f589aef64e74d4e2c71352a84d096947560094505165)  
+**Owner:** `0x72454f65aAe03333E309084D5f211AC059212187`  
 **Explorer:** https://explorer.arc.io
-
-> Contract address: _set after deployment — see `contracts/contract-metadata/AirCargoEscrow.json`_
 
 ### State Machine
 
@@ -152,31 +153,32 @@ bun run build
 2. Create a **Standard Developer API Key** (mainnet) in Circle Console
 3. Paste into `.env` as `CIRCLE_API_KEY`
 4. Register an entity secret (one-time, account-wide) — Arc Studio walks you through this
-5. Fund the deployer wallet with USDC (~0.05 USDC for gas)
+5. Fund the deployer wallet with USDC (~1 USDC for gas)
 
 ### Deploy Command (run via Arc Studio)
 
 ```bash
-bun run compass:deploy AirCargoEscrow '["0x3600000000000000000000000000000000000000","$DEPLOYER"]' \
+bun run compass:deploy AirCargoEscrow \
+  '["0x3600000000000000000000000000000000000000","0x72454f65aAe03333E309084D5f211AC059212187"]' \
   --mode live \
+  --signer private-key \
   --blockchain ARC-MAINNET \
   --compass-chain Arc \
-  --wallet-id <your-wallet-id> \
-  --wallet-address <your-wallet-address> \
-  --skip-funding
+  --rpc https://rpc.mainnet.arc.io
 ```
 
-`$DEPLOYER` is substituted automatically with your Circle DCW wallet address.  
-The first constructor arg is the Arc mainnet USDC address.
+Set `DEPLOYER_PRIVATE_KEY` in `.env` before running. Remove it immediately after.  
+The first constructor arg is the Arc mainnet USDC address; the second is the owner address.
 
 ### Post-Deploy Checklist (1–2 USDC end-to-end test)
 
 - [ ] `createShipment` — AWB `176-12345675`, carrier `Swiss WorldCargo`, 70/30 split, 1 USDC, 24h deadline
 - [ ] Approve USDC on the contract (`usdc.approve(contractAddress, 1_000_000)`)
 - [ ] `fund(shipmentId)` — verify status = Funded on explorer
-- [ ] `confirmDelivery(shipmentId)` — verify status = Released, check `claimable[carrier]` = 700_000
-- [ ] Carrier calls `claim()` — verify USDC received
-- [ ] Check all 4 tx hashes on https://explorer.arc.io
+- [ ] `confirmDelivery(shipmentId)` — verify status = Released, check `claimable[carrier]` = 700_000, `claimable[handler]` = 300_000
+- [ ] Carrier calls `claim()` — verify 700_000 USDC received
+- [ ] Handler calls `claim()` — verify 300_000 USDC received
+- [ ] Check all tx hashes on https://explorer.arc.io
 
 ---
 
@@ -203,7 +205,7 @@ Frontend (React + Vite + wagmi v2 + ConnectKit)
 This project was built end-to-end inside [Arc Studio](https://studio.arc.io) by Circle:
 
 - **Contract** — written, reviewed (balanced security review), and fixed by Arc Studio's contract pipeline
-- **Tests** — 53 Foundry unit tests written and run by Arc Studio's contract tester
+- **Tests** — 62 Foundry unit tests written and run by Arc Studio's contract tester
 - **Static analysis** — Slither run inside the Arc Studio sandbox
 - **Deployment** — Compass engine (CREATE2, deterministic address, fork rehearsal) via Arc Studio
 - **Frontend** — React/Vite/wagmi app built and wired to the deployed contract by Arc Studio

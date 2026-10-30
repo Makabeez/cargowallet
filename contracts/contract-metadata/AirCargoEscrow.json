@@ -1,0 +1,19 @@
+{
+  "contractAddress": "0xb56aea1ab82aa8f675eb2fa59d418734046cd92f",
+  "network": "ARC-MAINNET",
+  "deployerAddress": "0x56086a98bc24a92B32EC57DeB08D73D1c97B23C3",
+  "contract_code_path": "/home/user/app/contracts/AirCargoEscrow.sol",
+  "contract_compiled_code_path": "/home/user/app/contracts/out/AirCargoEscrow.sol/AirCargoEscrow.json",
+  "contract_network_and_links": {
+    "Arc": "0xb56aea1ab82aa8f675eb2fa59d418734046cd92f"
+  },
+  "contract_deployments": [
+    {
+      "chain": "Arc",
+      "address": "0xb56aea1ab82aa8f675eb2fa59d418734046cd92f",
+      "explorerUrl": "0xb56aea1ab82aa8f675eb2fa59d418734046cd92f",
+      "txHash": "0x9a57fc6f570174e26565f589aef64e74d4e2c71352a84d096947560094505165",
+      "deployedAt": "2026-10-29T22:42:35.182Z"
+    }
+  ]
+}

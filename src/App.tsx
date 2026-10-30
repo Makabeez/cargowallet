@@ -263,9 +263,22 @@ export default function App() {
           <ConnectKitButton label="Connect Wallet to Start" />
 
           <p className="mt-4 text-xs" style={{ color: 'var(--subtle)' }}>
-            Arc Testnet · USDC · No real funds required
+            Arc Mainnet · USDC · Real funds, small amounts
           </p>
         </div>
+
+        {/* Footer — contract address */}
+        <footer className="absolute bottom-4 left-0 right-0 flex justify-center">
+          <a
+            href="https://explorer.arc.io/address/0xb56aea1ab82aa8f675eb2fa59d418734046cd92f"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[10px] font-mono transition-opacity hover:opacity-80"
+            style={{ color: 'var(--subtle)' }}
+          >
+            Contract: 0xb56aea1ab82aa8f675eb2fa59d418734046cd92f
+          </a>
+        </footer>
       </div>
     )
   }
